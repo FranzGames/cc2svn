@@ -963,8 +963,8 @@ def main():
         info("Exiting")
     except KeyboardInterrupt, e:
         error("Interrupted by user")    
-    except:
-        error(str(sys.exc_info()[1]))
+    #except:
+    #    error(str(sys.exc_info()[1]))
     
 if __name__ == "__main__": 
     main()
