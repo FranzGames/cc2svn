@@ -112,7 +112,7 @@ DUMP_SINCE_DATE = None
 
 from config import *
 
-CLEARTOOL = '"' + os.path.realpath(CLEARTOOL) + '"'
+CLEARTOOL = os.path.realpath(CLEARTOOL)
 CC_VOB_DIR = os.path.realpath(CC_VOB_DIR)
 CACHE_DIR = os.path.realpath(CACHE_DIR)
 SVN_AUTOPROPS_FILE = os.path.realpath(SVN_AUTOPROPS_FILE)
@@ -156,7 +156,7 @@ def shellCmd(cmd, cwd=None, outfile=None):
                 outfd = open(outfile, 'wb')
             if cwd and not os.path.exists(cwd):
                 raise RuntimeError("No such file or directory: '" + cwd + "'")
-            p = subprocess.Popen(cmd, cwd=cwd, stdout=outfd, stderr=subprocess.PIPE, shell=True, close_fds=False)
+            p = subprocess.Popen(cmd, cwd=cwd, stdout=outfd, stderr=subprocess.PIPE, close_fds=False)
             (outStr, errStr) = p.communicate()
             if outfile:
                 outfd.close()
@@ -165,7 +165,7 @@ def shellCmd(cmd, cwd=None, outfile=None):
             if len(errStr) > 0:
                 raise RuntimeError("Command has non-empty error stream: \n" + errStr)
         except:
-            error("Command failed: " + cmd + "\n" + str(sys.exc_info()[1]))
+            error("Command failed: " + str(cmd) + "\n" + str(sys.exc_info()[1]))
             status = askRetryContinueExit()
             if status == "retry": continue
         break
@@ -791,7 +791,7 @@ class Converter:
                 else:
                     raise RuntimeError("File " + symlinkfile + " is not a symbolic link")
             else: 
-                cmd = CLEARTOOL + ' get -to "' + localfile + '" "' + ccfile + '"'
+                cmd = [CLEARTOOL, 'get', '-to', localfile, ccfile]
                 (status, out) = shellCmd(cmd, cwd=CC_VOB_DIR)
                 if status == "ignore":
                     if not os.path.exists(localfile): open(localfile, 'w').close()
@@ -811,7 +811,7 @@ class Converter:
                 for line in file:
                     outStr += line
         else:
-            cmd = CLEARTOOL + ' descr -fmt "' + HISTORY_FORMAT + '" ' + ccrevfile
+            cmd = [CLEARTOOL, 'descr', '-fmt', HISTORY_FORMAT, ccrevfile]
             (status, outStr) = shellCmd(cmd, cwd=CC_VOB_DIR)
             with open(localfile, 'w') as file:
                 file.write(outStr)                    
@@ -820,17 +820,17 @@ class Converter:
     def getLabelContent(self, label):       
         labelFilename = os.path.join(CACHE_DIR, label)
         if not os.path.exists(labelFilename):
-            cmd = CLEARTOOL + ' find . -ver "version(' + label + ')" -print'
+            cmd = [CLEARTOOL, 'find', '.', '-ver', 'version(' + label + ')', '-print']
             shellCmd(cmd, cwd=CC_VOB_DIR, outfile=labelFilename)
         return labelFilename
     
     
     def saveConfigSpec(self, file):                
-        cmd = CLEARTOOL + " catcs"        
+        cmd = [CLEARTOOL, 'catcs']
         shellCmd(cmd, cwd=CC_VOB_DIR, outfile=file)
             
     def setConfigSpec(self, file):
-        cmd = CLEARTOOL + " setcs -def " + file        
+        cmd = [CLEARTOOL, 'setcs', file]
         shellCmd(cmd, cwd=CC_VOB_DIR)
     
     def setLabelSpec(self, label):
@@ -913,7 +913,7 @@ def getCCHistory(filename):
         if askYesNo("Use this file?"):
             return filename        
     
-    cmd = CLEARTOOL + " lshistory -recurse -fmt " + HISTORY_FORMAT
+    cmd = [CLEARTOOL, 'lshistory', '-recurse', '-fmt', HISTORY_FORMAT]
     shellCmd(cmd, cwd=CC_VOB_DIR, outfile=filename)
     pass
 
