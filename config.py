@@ -3,18 +3,18 @@ import os
 THIS_FILE_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # The cleartool command full path
-CLEARTOOL = "/usr/atria/bin/cleartool"
+CLEARTOOL = "C:/Program Files (x86)/IBM/RationalSDLC/ClearCase/bin/cleartool.exe"
 
 # The root directory for conversion
 # The tool will launch ct lshi -rec there and will convert all files found below this directory
-CC_VOB_DIR = "/vobs/MY_VOB_DIR/path/to/root"
+CC_VOB_DIR = "T:/CBusModule"
 
 # The tool uses cache directory to place ClearCase version files there. The cache speeds up the transfer process
 # in many times in subsequent attempts (up to 10 times). It may be recommended to start the tool 2 days before the
 # actual transfer loading all files to the cache. So only new versions appeared during the 2 days will be retrieved from
 # ClearCase in the day of the transfer.
 # NOTE: Make sure there is enough space in cache directory.
-CACHE_DIR = "/var/tmp/cc2svn_cache"
+CACHE_DIR = "C:/temp/cc2svn_cache"
 
 # The tool can not track the history of ClearCase symbolic links
 # This is a workaround for this. When the tool finds the symlink record in CC history
@@ -35,7 +35,7 @@ SVN_AUTOPROPS_FILE = THIS_FILE_DIR + "/config.autoprops"
 # file must contain one label per line, example: 
 # LABEL_1
 # LABEL_2 
-CC_LABELS_FILE = THIS_FILE_DIR + "/labels.txt"
+#CC_LABELS_FILE = THIS_FILE_DIR + "/labels.txt"
 
 # If CC_BRANCHES_FILE is not defined, the tool will convert all branches it finds in history of the current view
 # If CC_BRANCHES_FILE is defined, the tool will transfer only those branches mentioned in file
@@ -43,12 +43,13 @@ CC_LABELS_FILE = THIS_FILE_DIR + "/labels.txt"
 # file must contain one branch name per line (without slashes), example: 
 # main  
 # user_dev
-CC_BRANCHES_FILE = THIS_FILE_DIR + "/branches.txt"
+#CC_BRANCHES_FILE = THIS_FILE_DIR + "/branches.txt"
 
 
 # If CC_IGNORED_DIRECTORIES_FILE is not defined, the tool will not import history of files
 # from ignored directories
-CC_IGNORED_DIRECTORIES_FILE = THIS_FILE_DIR + "/ignoredDirectories.txt"
+#CC_IGNORED_DIRECTORIES_FILE = THIS_FILE_DIR + "/ignoredDirectories.txt"
+CC_IGNORED_DIRECTORIES_FILE = None
 
 # If the tool finds the size of the file in cache is zero, it may try loading the file from ClearCase again.
 # This is to make sure zero size is not due to previous unsuccessful retrieving attempt.
@@ -56,13 +57,13 @@ CHECK_ZEROSIZE_CACHEFILE = True
 
 # Should svndump contain the command to create SVN /branches and /tags directory or not
 # It will be an error if you try loading the dump with such command to SVN repository containing these directories
-SVN_CREATE_BRANCHES_TAGS_DIRS = False
+SVN_CREATE_BRANCHES_TAGS_DIRS = True
 
 # SVN dump output file created by the tool
-SVN_DUMP_FILE = "svndump.txt"
+SVN_DUMP_FILE = "c:/temp/svndump.txt"
 
 # ClearCase history file created by the tool
-HISTORY_FILE = "cchistory.txt"
+HISTORY_FILE = "c:/temp/cchistory.txt"
 
 # DUMP_SINCE_DATE activates incremental dump mode. This should be used after the full dump mode only.
 # The idea is: you convert cc2svn on the day X without using this option, working in svn and ClearCase simultaneously
