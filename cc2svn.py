@@ -837,7 +837,6 @@ class Converter:
         with open(CCVIEW_TMPFILE, 'w') as file:
             file.write("element * CHECKEDOUT\n")
             file.write("element * " + label + "\n")
-            file.write("element * /main/LATEST\n")
         self.setConfigSpec(CCVIEW_TMPFILE)        
         
     def completeLabels(self):
