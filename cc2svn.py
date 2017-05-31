@@ -26,10 +26,10 @@
 """
 NAME
     cc2svn.py - converts ClearCase view files to SVN dump
-    The dump can be loaded by SVN using 'cat svndump.txt | svnadmin load' command.    
+    The dump can be loaded by SVN using 'svnadmin load /repo/path<svndump.txt' command.
 
 SYNOPSIS
-    cc2svn.py -run | -help
+    cc2svn.py -run [config.ini] | -help
 
 DESCRIPTION
     The tool uses the current ClearCase view to list the CC history (ct lshi -rec)
@@ -67,8 +67,8 @@ COMMAND LINE OPTIONS
     -help   prints this help
    
 FILES          
-    ./config.py            main configuration file written like a python module.
-    ./config.autoprops     extension -> svn properties mapping. See config.py for details
+    ./config.ini           main configuration file written as an ini file
+    ./config.autoprops     extension -> svn properties mapping. See config.ini for details
     
 AUTHOR
     Vadim Goryunov (vadim.goryunov@gmail.com)
@@ -80,7 +80,7 @@ LICENSING
 from __future__ import with_statement
 import os, subprocess, time, sys, hashlib, codecs, fnmatch
 
-USAGE = "Usage: %(cmd)s -run | -help" % { "cmd" : sys.argv[0] } 
+USAGE = "Usage: %(cmd)s -run [config.ini] | -help" % { "cmd" : sys.argv[0] } 
 
 if len(sys.argv) <= 1:
     print USAGE
@@ -92,13 +92,13 @@ if sys.argv[1] == "-help":
 
 if sys.argv[1] != "-run":
     print USAGE
-    sys.exit(1)    
+    sys.exit(1)
 
 ############# constants ######################
-    
-HISTORY_FIELD_SEPARATOR = "@@@"    
 
-HISTORY_FORMAT = "%Nd;%En;%Vn;%o;%l;%a;%m;%u;%Nc;\\n".replace(";", HISTORY_FIELD_SEPARATOR)    
+HISTORY_FIELD_SEPARATOR = "@@@"
+
+HISTORY_FORMAT = "%Nd;%En;%Vn;%o;%l;%a;%m;%u;%Nc;\\n".replace(";", HISTORY_FIELD_SEPARATOR)
 
 CC_DATE_FORMAT = "%Y%m%d.%H%M%S"
 SVN_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.000000Z"
@@ -106,27 +106,46 @@ SVN_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.000000Z"
 FILEREAD_CHUNKSIZE = 512
 
 ############# parameters ######################
-CC_LABELS_FILE = None
-CC_BRANCHES_FILE = None
-DUMP_SINCE_DATE = None
+mydir = os.path.dirname(os.path.realpath(__file__))
+if len(sys.argv) > 2:
+    confname = sys.argv[2]
+else:
+    confname = mydir + '/config.ini'
 
-from config import *
+import ConfigParser
+conf = ConfigParser.ConfigParser({'dir' : mydir})
+conf.read(confname)
 
-CLEARTOOL = os.path.realpath(CLEARTOOL)
-CC_VOB_DIR = os.path.realpath(CC_VOB_DIR)
-CACHE_DIR = os.path.realpath(CACHE_DIR)
-SVN_AUTOPROPS_FILE = os.path.realpath(SVN_AUTOPROPS_FILE)
-SVN_DUMP_FILE = os.path.realpath(SVN_DUMP_FILE)
-HISTORY_FILE = os.path.realpath(HISTORY_FILE)
+def getparam(fn, section, opt):
+    try:
+        return fn(section, opt)
+    except ConfigParser.NoOptionError:
+        return None
+
+CC_LABELS_FILE = getparam(conf.get, 'global', 'cc_labels_file')
+CC_BRANCHES_FILE = getparam(conf.get, 'global', 'cc_branches_file')
+DUMP_SINCE_DATE = getparam(conf.get, 'global', 'dump_since_date')
+CLEARTOOL = os.path.realpath(getparam(conf.get, 'global', 'cleartool'))
+CC_VOB_DIR = os.path.realpath(getparam(conf.get, 'global', 'cc_vob_dir'))
+CACHE_DIR = os.path.realpath(getparam(conf.get, 'global', 'cache_dir'))
+SVN_AUTOPROPS_FILE = os.path.realpath(getparam(conf.get, 'global', 'svn_autoprops_file'))
+SVN_DUMP_FILE = os.path.realpath(getparam(conf.get, 'global', 'svn_dump_file'))
+HISTORY_FILE = os.path.realpath(getparam(conf.get, 'global', 'history_file'))
+CC_IGNORED_DIRECTORIES_FILE = getparam(conf.get, 'global', 'cc_ignored_directories_file')
+SVN_CREATE_BRANCHES_TAGS_DIRS = getparam(conf.get, 'global', 'svn_create_branches_tags_dirs')
+ENCODING = getparam(conf.get, 'global', 'encoding')
 
 if CC_LABELS_FILE:
-    CC_LABELS_FILE = os.path.realpath(CC_LABELS_FILE)    
-    
+    CC_LABELS_FILE = os.path.realpath(CC_LABELS_FILE)
+
 if CC_BRANCHES_FILE:
     CC_BRANCHES_FILE = os.path.realpath(CC_BRANCHES_FILE)
 
-if DUMP_SINCE_DATE:            
+if DUMP_SINCE_DATE:
     DUMP_SINCE_DATE = time.strptime(DUMP_SINCE_DATE, CC_DATE_FORMAT)
+
+if CC_IGNORED_DIRECTORIES_FILE:
+    CC_IGNORED_DIRECTORIES_FILE = os.path.realpath(CC_IGNORED_DIRECTORIES_FILE)
 
 CCVIEW_TMPFILE = CACHE_DIR + "/label_config_spec_tmp_cc2svnpy"
 CCVIEW_CONFIGSPEC = CACHE_DIR + "/user_config_spec_tmp_cc2svnpy"
