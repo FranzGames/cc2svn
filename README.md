@@ -20,6 +20,7 @@ Features:
  - retry/ignore failed CC commands
  - cache for ClearCase files
  - tested on Linux/Solaris and __Windows__
+ - Support using Configuration Specifications for generating the branches. (Resolves issue with VOBs with Evil Twins)
 
 Main points
 -----------
