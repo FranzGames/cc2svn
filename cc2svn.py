@@ -78,7 +78,7 @@ LICENSING
 """
 
 from __future__ import with_statement
-import os, subprocess, time, sys, hashlib, codecs, fnmatch
+import os, subprocess, time, sys, hashlib, codecs, fnmatch, shutil, stat
 
 USAGE = "Usage: %(cmd)s -run [config.ini] | -help" % { "cmd" : sys.argv[0] }
 
@@ -124,6 +124,7 @@ def getparam(fn, section, opt):
 
 CC_LABELS_FILE = getparam(conf.get, 'global', 'cc_labels_file')
 CC_BRANCHES_FILE = getparam(conf.get, 'global', 'cc_branches_file')
+CC_CONFIG_SPEC_DIR = getparam(conf.get, 'global', 'cc_config_spec_dir')
 DUMP_SINCE_DATE = getparam(conf.get, 'global', 'dump_since_date')
 CLEARTOOL = os.path.realpath(getparam(conf.get, 'global', 'cleartool'))
 CC_VOB_DIR = os.path.realpath(getparam(conf.get, 'global', 'cc_vob_dir'))
@@ -134,6 +135,7 @@ HISTORY_FILE = os.path.realpath(getparam(conf.get, 'global', 'history_file'))
 CC_IGNORED_DIRECTORIES_FILE = getparam(conf.get, 'global', 'cc_ignored_directories_file')
 SVN_CREATE_BRANCHES_TAGS_DIRS = getparam(conf.get, 'global', 'svn_create_branches_tags_dirs')
 ENCODING = getparam(conf.get, 'global', 'encoding')
+CHECK_ZEROSIZE_CACHEFILE = getparam(conf.get, 'global', 'check_zerosize_cachefile')
 
 if CC_LABELS_FILE:
     CC_LABELS_FILE = os.path.realpath(CC_LABELS_FILE)
@@ -141,14 +143,18 @@ if CC_LABELS_FILE:
 if CC_BRANCHES_FILE:
     CC_BRANCHES_FILE = os.path.realpath(CC_BRANCHES_FILE)
 
+if CC_CONFIG_SPEC_DIR:
+    CC_CONFIG_SPEC_DIR = os.path.realpath(CC_CONFIG_SPEC_DIR)
+
 if DUMP_SINCE_DATE:
     DUMP_SINCE_DATE = time.strptime(DUMP_SINCE_DATE, CC_DATE_FORMAT)
 
 if CC_IGNORED_DIRECTORIES_FILE:
     CC_IGNORED_DIRECTORIES_FILE = os.path.realpath(CC_IGNORED_DIRECTORIES_FILE)
 
-CCVIEW_TMPFILE = CACHE_DIR + "/label_config_spec_tmp_cc2svnpy"
-CCVIEW_CONFIGSPEC = CACHE_DIR + "/user_config_spec_tmp_cc2svnpy"
+
+CCVIEW_TMPFILE = CACHE_DIR + os.sep + "label_config_spec_tmp_cc2svnpy"
+CCVIEW_CONFIGSPEC = CACHE_DIR + os.sep + "user_config_spec_tmp_cc2svnpy"
 
 ############# utilities ######################
 
@@ -164,6 +170,27 @@ def warn(text):
 def error(text):
     logMessage("ERROR: " + text)
 
+
+def runCmd(cmd, cwd=None, outfile=None):
+    outfd = subprocess.PIPE
+    outStr = ""
+    status = 0
+    while True:
+        try:
+            if outfile:
+                outfd = open(outfile, 'wb')
+            if cwd and not os.path.exists(cwd):
+                raise RuntimeError("No such file or directory: '" + cwd + "'")
+            p = subprocess.Popen(cmd, cwd=cwd, stdout=outfd, stderr=subprocess.PIPE, close_fds=False)
+            (outStr, errStr) = p.communicate()
+            if outfile:
+                outfd.close()
+            status = p.returncode
+        except:
+            error("Command failed: " + str(cmd) + "\n" + str(sys.exc_info()[1]))
+            status = -1
+        break
+    return (status, outStr)
 
 def shellCmd(cmd, cwd=None, outfile=None):
     outfd = subprocess.PIPE
@@ -338,6 +365,29 @@ class CCHistoryParser:
     def __init__(self):
         self.prevline = ""
 
+    def mkelemRecord (self, path, rev):
+
+        ccRecord = CCRecord()
+        ccRecord.comment = "";
+        ccRecord.date = time.strptime("20000101.000001", CC_DATE_FORMAT)
+        ccRecord.path = path;
+        ccRecord.revision = rev;
+        ccRecord.operation = "mkelem";
+        ccRecord.labels = self.parseLabels("");
+        ccRecord.type = "version";
+        ccRecord.author = "";
+
+        revisionParts = ccRecord.revision.split(os.sep)
+
+        if len(revisionParts) > 0:
+            ccRecord.branchNames = revisionParts[1:-1]
+            ccRecord.revNumber = revisionParts[-1]
+        else:
+            ccRecord.branchNames = []
+            ccRecord.revNumber = "-1"
+
+        return ccRecord
+
     def parseLabels(self, s):
         # format: (label1, label2, label3)
         if len(s) > 0 and s.startswith("(") and s.endswith(")"):
@@ -500,7 +550,7 @@ class FileSet(set):
         self.root = root
 
     def getAbsolutePath(self, path):
-        return self.root + "/" + path
+        return self.root + os.sep + path
 
 class WriteStream:
     def __init__(self, file):
@@ -781,6 +831,41 @@ class Converter:
             pass
         pass
 
+    def populateCache(self, path, revision, symlink=False):
+        ccfile = CC_VOB_DIR + os.sep + path
+
+        info(path + " " + revision)
+
+        localfile = os.path.normpath(self.cachedir + "/" + path)
+        if revision:
+            localfile = os.path.normpath(localfile + "/" + revision)
+        localfileDir = os.path.dirname(localfile)
+        if not os.path.exists(localfileDir):
+            os.makedirs(localfileDir, mode=0777)
+
+        cacheExists = os.path.exists(localfile)
+        if cacheExists and CHECK_ZEROSIZE_CACHEFILE:
+            cacheExists = os.path.getsize(localfile) > 0
+
+            if not cacheExists:
+                os.chmod (localfile, stat.S_IWRITE)
+                os.remove (localfile)
+
+        if not cacheExists:
+            if symlink:
+                symlinkfile = os.path.normpath(ccfile)
+                if os.path.islink(symlinkfile):
+                    content = os.readlink(symlinkfile)
+                    outfile = open(localfile, 'wb')
+                    outfile.write("link " + content)
+                    outfile.close()
+                    pass
+                else:
+                    raise RuntimeError("File " + symlinkfile + " is not a symbolic link")
+            else:
+                shutil.copy (ccfile, localfile)
+        return localfile
+
     def getFile(self, path, revision, symlink=False):
         ccfile = path
 
@@ -798,9 +883,13 @@ class Converter:
         if cacheExists and CHECK_ZEROSIZE_CACHEFILE:
             cacheExists = os.path.getsize(localfile) > 0
 
+            if not cacheExists:
+                os.chmod (localfile, stat.S_IWRITE)
+                os.remove (localfile)
+
         if not cacheExists:
             if symlink:
-                symlinkfile = os.path.normpath(CC_VOB_DIR + "/" + ccfile)
+                symlinkfile = os.path.normpath(CC_VOB_DIR + os.sep + ccfile)
                 if os.path.islink(symlinkfile):
                     content = os.readlink(symlinkfile)
                     outfile = open(localfile, 'wb')
@@ -856,6 +945,7 @@ class Converter:
         with open(CCVIEW_TMPFILE, 'w') as file:
             file.write("element * CHECKEDOUT\n")
             file.write("element * " + label + "\n")
+            file.write("element * /main/0\n")
         self.setConfigSpec(CCVIEW_TMPFILE)
 
     def completeLabels(self):
@@ -924,6 +1014,23 @@ class Converter:
 
 ############# main functions ######################
 
+def getCCBranchHistory(branch, filename):
+    info("Loading CC history to " + filename)
+
+    if os.path.exists(filename):
+        info("File " + filename + " already exists")
+        if askYesNo("Use this file?"):
+            return filename
+
+    cmd = [CLEARTOOL, 'lshistory', '-recurse', '-fmt', HISTORY_FORMAT, '-branch', branch]
+    shellCmd(cmd, cwd=CC_VOB_DIR, outfile=filename)
+    pass
+
+def branchExist(branch):
+    cmd = [CLEARTOOL, 'lshistory', '-recurse', '-fmt', HISTORY_FORMAT, '-branch', branch]
+    (ret, str) = runCmd(cmd, cwd=CC_VOB_DIR)
+    return (ret == 0)
+
 def getCCHistory(filename):
     info("Loading CC history to " + filename)
 
@@ -946,6 +1053,18 @@ def readList(filename):
                 resList.add(line.strip())
     return resList
 
+def listOfFiles (path):
+    listFiles = []
+
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            fname = os.path.join(root, name)
+            filename = fname[len(path) + 1:]
+
+            listFiles.append (filename)
+
+    return listFiles        
+
 def main():
 
     try:
@@ -953,25 +1072,89 @@ def main():
         labels = readList(CC_LABELS_FILE)
         branches = readList(CC_BRANCHES_FILE)
         ignoredDirectories = readList(CC_IGNORED_DIRECTORIES_FILE)
-
-        getCCHistory(HISTORY_FILE)
-
         autoProps = SvnAutoProps(SVN_AUTOPROPS_FILE)
 
         info("Processing ClearCase history, creating svn dump " + SVN_DUMP_FILE)
 
         with open(SVN_DUMP_FILE, 'wb') as dumpfile:
-
             converter = Converter(dumpfile, labels, branches, ignoredDirectories, autoProps)
-
             parser = CCHistoryParser()
 
-            with open(HISTORY_FILE, 'rb') as historyFile:
-                for line in rlines(historyFile): # reading lines in reverse order
-                    ccRecord = parser.processLine(line)
+            if CC_CONFIG_SPEC_DIR:
 
-                    if ccRecord:
-                        converter.process(ccRecord)
+                for branch in branches:
+                    converter.setConfigSpec (CC_CONFIG_SPEC_DIR + os.sep + branch + ".txt")
+                    fileList = listOfFiles (CC_VOB_DIR)
+
+                    info("Get ClearCase history for branch " + branch)
+
+                    if branchExist (branch):
+                        getCCBranchHistory(branch, HISTORY_FILE)
+
+                        with open(HISTORY_FILE, 'rb') as historyFile:
+                            lines = rlines(historyFile)
+                            branchFiles = set()
+
+                            branch = ""
+                            rev = ""
+                            first = True
+
+                            for line in lines: # reading lines in reverse order
+                                ccRecord = parser.processLine(line)
+
+                                if ccRecord:
+                                    if first:
+                                        branch = ccRecord.branchNames
+                                        branch.append ('0')
+                                        rev = os.sep.join(branch)
+                                        first = False
+
+                                    branchFiles.add(ccRecord.path)
+
+                            missingFiles = []
+
+                            for filename in fileList:
+                                if filename not in branchFiles:
+                                    missingFiles.append (filename)
+
+                            for filename in missingFiles:
+                                ccRecord = parser.mkelemRecord (filename, rev)
+                                converter.populateCache (filename, rev)
+                                converter.process (ccRecord)
+
+                        with open(HISTORY_FILE, 'rb') as historyFile:
+                            lines = rlines(historyFile)
+
+                            for line in lines: # reading lines in reverse order
+                                ccRecord = parser.processLine(line)
+
+                                if ccRecord:
+                                    converter.process(ccRecord)
+
+                        os.remove (HISTORY_FILE)
+                    else:
+                        missingFiles = []
+                        rev = os.sep + "main" + os.sep + branch + os.sep + "0"
+
+                        for filename in fileList:
+                            missingFiles.append (filename)
+
+                        for filename in missingFiles:
+                            ccRecord = parser.mkelemRecord (filename, rev)
+                            converter.populateCache (filename, rev)
+                            converter.process (ccRecord)
+            else:
+                getCCHistory(HISTORY_FILE)
+
+                info("Processing ClearCase history, creating svn dump " + SVN_DUMP_FILE)
+
+
+                with open(HISTORY_FILE, 'rb') as historyFile:
+                    for line in rlines(historyFile): # reading lines in reverse order
+                        ccRecord = parser.processLine(line)
+
+                        if ccRecord:
+                            converter.process(ccRecord)
 
             converter.completeLabels()
 
