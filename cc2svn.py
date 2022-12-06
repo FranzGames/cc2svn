@@ -834,6 +834,9 @@ class Converter:
     def populateCache(self, path, revision, symlink=False):
         ccfile = CC_VOB_DIR + os.sep + path
 
+        if self.isIgnored(path):
+            info("Ignored: " + path)
+            return
         info(path + " " + revision)
 
         localfile = os.path.normpath(self.cachedir + "/" + path)
