@@ -136,6 +136,7 @@ CC_IGNORED_DIRECTORIES_FILE = getparam(conf.get, 'global', 'cc_ignored_directori
 SVN_CREATE_BRANCHES_TAGS_DIRS = getparam(conf.get, 'global', 'svn_create_branches_tags_dirs')
 ENCODING = getparam(conf.get, 'global', 'encoding')
 CHECK_ZEROSIZE_CACHEFILE = getparam(conf.get, 'global', 'check_zerosize_cachefile')
+IGNORE_CHILD_BRANCH_WARNING = getparam(conf.get, 'global', 'ignore_child_branch_warning')
 
 if CC_LABELS_FILE:
     CC_LABELS_FILE = os.path.realpath(CC_LABELS_FILE)
@@ -152,6 +153,8 @@ if DUMP_SINCE_DATE:
 if CC_IGNORED_DIRECTORIES_FILE:
     CC_IGNORED_DIRECTORIES_FILE = os.path.realpath(CC_IGNORED_DIRECTORIES_FILE)
 
+if IGNORE_CHILD_BRANCH_WARNING:
+    IGNORE_CHILD_BRANCH_WARNING = 'false'
 
 CCVIEW_TMPFILE = CACHE_DIR + os.sep + "label_config_spec_tmp_cc2svnpy"
 CCVIEW_CONFIGSPEC = CACHE_DIR + os.sep + "user_config_spec_tmp_cc2svnpy"
@@ -758,7 +761,7 @@ class Converter:
                         else:
                             error("ClearCase history is corrupted: child branch appeared before the parent one for file " +
                                   ccRecord.path + "@@" + ccRecord.revision)
-                            if askYesNo("Create branch anyway and ignore the error? (or exit)"):
+                            if IGNORE_CHILD_BRANCH_WARNING == 'true' or askYesNo("Create branch anyway and ignore the error? (or exit)"):
                                 newBranchFileSet = FileSet(getSvnBranchPath(ccRecord.svnbranch))
                                 self.svnTree[ccRecord.svnbranch] = newBranchFileSet
                                 dumpSvnDir(self.out, newBranchFileSet.root)
@@ -835,8 +838,8 @@ class Converter:
         ccfile = CC_VOB_DIR + os.sep + path
 
         if self.isIgnored(path):
-            info("Ignored: " + path)
             return
+
         info(path + " " + revision)
 
         localfile = os.path.normpath(self.cachedir + "/" + path)
