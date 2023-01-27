@@ -153,7 +153,7 @@ if DUMP_SINCE_DATE:
 if CC_IGNORED_DIRECTORIES_FILE:
     CC_IGNORED_DIRECTORIES_FILE = os.path.realpath(CC_IGNORED_DIRECTORIES_FILE)
 
-if IGNORE_CHILD_BRANCH_WARNING:
+if not IGNORE_CHILD_BRANCH_WARNING:
     IGNORE_CHILD_BRANCH_WARNING = 'false'
 
 CCVIEW_TMPFILE = CACHE_DIR + os.sep + "label_config_spec_tmp_cc2svnpy"
@@ -532,13 +532,19 @@ class SvnRevisionProps:
         self.properties.dump(out);
 
     def setAuthor(self, author):
-        self.properties.set("svn:author", toUTF8(author));
+        try:
+            self.properties.set("svn:author", toUTF8(author));
+        except:
+            self.properties.set("svn:author", "");
 
     def setDate(self, date):
         self.properties.set("svn:date", time.strftime(SVN_DATE_FORMAT, date))
 
     def setMessage(self, message):
-        self.properties.set("svn:log", toUTF8(message));
+        try:
+            self.properties.set("svn:log", toUTF8(message));
+        except:
+            self.properties.set("svn:log", "");
 
     def setCCRevision(self, ccrevision):
         self.properties.set("ClearcaseRevision", ccrevision);
