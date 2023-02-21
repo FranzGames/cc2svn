@@ -137,6 +137,9 @@ SVN_CREATE_BRANCHES_TAGS_DIRS = getparam(conf.get, 'global', 'svn_create_branche
 ENCODING = getparam(conf.get, 'global', 'encoding')
 CHECK_ZEROSIZE_CACHEFILE = getparam(conf.get, 'global', 'check_zerosize_cachefile')
 IGNORE_CHILD_BRANCH_WARNING = getparam(conf.get, 'global', 'ignore_child_branch_warning')
+SVN_TMP_DUMP_FILE = os.path.realpath(getparam(conf.get, 'global', 'svn_tmp_dump_file'))
+BRANCH_HISTORY_FILE = os.path.realpath(getparam(conf.get, 'global', 'cc_branch_history_file'))
+RUN_STATE_FILE = os.path.realpath(getparam(conf.get, 'global', 'run_state_file'))
 
 if CC_LABELS_FILE:
     CC_LABELS_FILE = os.path.realpath(CC_LABELS_FILE)
@@ -599,6 +602,8 @@ class Converter:
         self.cachedir = CACHE_DIR
         self.revProps = SvnRevisionProps()
 
+
+    def initializeFile(self):
         self.out.write("SVN-fs-dump-format-version: 2\n\n")
 
         if DUMP_SINCE_DATE is not None:
@@ -608,6 +613,63 @@ class Converter:
             self.dumpRevisionHeader()
             dumpSvnDir(self.out, getSvnBranchPath(""))
             dumpSvnDir(self.out, getSvnTagPath(""))
+
+    def loadState (self, file):
+        stateFile = open (file, "rt")
+
+        lines = stateFiles.readlines()
+        state = 0
+        newCCTree = set()
+        newSvnTree = {}
+
+        for line in lines:
+            if line.startswith ("SvnRevNum:"):
+                rev = line[len("SvnRevNum:"):].replace ("\n", "")
+                self.svnRevNum = int(rev)
+                continue
+
+            if state == 2:
+                parts = line.replace("\n", "").split("|")
+                newCCTree.add((parts[0], parts[1]))
+
+            if state == 1 and line.startswith ("ccTree:"):
+                state = 2
+                continue
+        
+            if state == 1:
+                parts = line.replace("\n", "").split("|")
+                newSvnTree[parts[0]] = FileSet (parts[1])
+
+            if state == 0 and line.startswith ("svnTree:"):
+                state = 1
+                continue
+        
+        stateFile.close();
+        self.ccTree = newCCTree
+        self.svnTree = newSvnTree
+
+
+    def saveState (self, file):
+        stateFile = open (file, "wt")
+
+        stateFile.write("SvnRevNum:"+self.svnRevNum+"\n");
+        stateFile.write("svnTree:\n");
+        for key, value in self.svnTree.items():
+            stateFile.write (key+"|"+value.root+"\n");
+
+        stateFile.write("ccTree:\n");
+
+        for (path, revision) in self.ccTree:
+            stateFile.write(path+"|"+revision+"\n");
+
+        stateFile.close();
+
+
+    def setFile(self, file):
+        isDisabled = self.out.disabled()
+        self.out = WriteStream (file)
+        if isDisabled:
+            self.out.disable()
 
     def dumpRevisionHeader(self):
         self.out.write("Revision-number: " + str(self.svnRevNum) + "\n");
@@ -860,8 +922,12 @@ class Converter:
             cacheExists = os.path.getsize(localfile) > 0
 
             if not cacheExists:
-                os.chmod (localfile, stat.S_IWRITE)
-                os.remove (localfile)
+                if os.path.isfile(localfile):
+                    os.chmod (localfile, stat.S_IWRITE)
+                    os.remove (localfile)
+
+                if os.path.isdir(localfile):
+                    os.rmdir (localfile)
 
         if not cacheExists:
             if symlink:
@@ -1059,10 +1125,10 @@ def readList(filename):
     resList = None
     if filename:
         info("Reading " + filename)
-        resList = set()
+        resList = []
         with open(filename, 'r') as file:
             for line in file:
-                resList.add(line.strip())
+                resList.append(line.strip())
     return resList
 
 def listOfFiles (path):
@@ -1078,6 +1144,7 @@ def listOfFiles (path):
     return listFiles        
 
 def main():
+    converter = None
 
     try:
 
@@ -1085,11 +1152,27 @@ def main():
         branches = readList(CC_BRANCHES_FILE)
         ignoredDirectories = readList(CC_IGNORED_DIRECTORIES_FILE)
         autoProps = SvnAutoProps(SVN_AUTOPROPS_FILE)
+        continuedRun = os.path.exists(RUN_STATE_FILE)
+
+        if not os.path.exists(SVN_DUMP_FILE):
+            continuedRun = False
 
         info("Processing ClearCase history, creating svn dump " + SVN_DUMP_FILE)
 
-        with open(SVN_DUMP_FILE, 'wb') as dumpfile:
+        if continuedRun:
+            info("State File " + RUN_STATE_FILE + " exists")
+            if not askYesNo("Continue previous run?"):
+                os.remove (SVN_DUMP_FILE)
+                os.remove (RUN_STATE_FILE)
+                continuedRun = False
+
+
+        with open(SVN_DUMP_FILE, 'ab') as dumpfile:
             converter = Converter(dumpfile, labels, branches, ignoredDirectories, autoProps)
+
+            if not continuedRun:
+                converter.initializeFile()
+
             parser = CCHistoryParser()
 
             if CC_CONFIG_SPEC_DIR:
@@ -1098,7 +1181,13 @@ def main():
                     converter.setConfigSpec (CC_CONFIG_SPEC_DIR + os.sep + branch + ".txt")
                     fileList = listOfFiles (CC_VOB_DIR)
 
+                    branchSvnDump = open (SVN_TMP_DUMP_FILE, 'wb')
+                    converter.setFile (branchSvnDump)
+
                     info("Get ClearCase history for branch " + branch)
+
+                    with open(BRANCH_HISTORY_FILE, "at") as branchhist:
+                        branchhist.write (branch+"\n")
 
                     if branchExist (branch):
                         getCCBranchHistory(branch, HISTORY_FILE)
@@ -1107,7 +1196,6 @@ def main():
                             lines = rlines(historyFile)
                             branchFiles = set()
 
-                            branch = ""
                             rev = ""
                             first = True
 
@@ -1116,12 +1204,15 @@ def main():
 
                                 if ccRecord:
                                     if first:
-                                        branch = ccRecord.branchNames
-                                        branch.append ('0')
-                                        rev = os.sep.join(branch)
+                                        branchPath = ccRecord.branchNames
+                                        branchPath.append ('0')
+                                        rev = os.sep.join(branchPath)
                                         first = False
 
                                     branchFiles.add(ccRecord.path)
+
+                            if rev == "":
+                                rev = "/main/"+branch+"/0"
 
                             missingFiles = []
 
@@ -1155,6 +1246,18 @@ def main():
                             ccRecord = parser.mkelemRecord (filename, rev)
                             converter.populateCache (filename, rev)
                             converter.process (ccRecord)
+
+                    branchSvnDump.close()
+
+                    branchSvnDump = open (SVN_TMP_DUMP_FILE, "rb")
+                    byte = branchSvnDump.read(1024)
+                    while byte:
+                        dumpfile.write(byte)
+                        byte = branchSvnDump.read(1024)
+
+                    branchSvnDump.close()
+                    converter.setFile (dumpfile)
+
             else:
                 getCCHistory(HISTORY_FILE)
 
@@ -1176,8 +1279,10 @@ def main():
         info("Exiting")
     except KeyboardInterrupt, e:
         error("Interrupted by user")
-    #except:
-    #    error(str(sys.exc_info()[1]))
+    except:
+        if converter is not None:
+            converter.saveState (RUN_STATE_FILE)
+
 
 if __name__ == "__main__":
     main()
